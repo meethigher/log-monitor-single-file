@@ -1,0 +1,22 @@
+server:
+  port: 11000
+  servlet:
+    context-path: /ids
+cas:
+  server-name: http://192.168.110.199:11000
+spring:
+  mvc:
+    static-path-pattern: /**
+# log-monitor项目自有的配置，必须配
+log:
+  # websocket监听文件变化的请求路径
+  websocket: /monitor
+  monitor:
+    # logback配置的默认目录
+    defaultPath: D:/aaa
+    # logback生成的实时日志路径，最终的监控日志路径是defaultPath与defaultLog拼接
+    defaultLog: /system-info.log
+    # true： 按照文件更新时间查询 false：按照文件名称的时间查询（选择false时，必须严格按照logback示例配置来，否则查不到）
+    queryByFileTime: true
+  # 配置集群的所有节点
+  clusterNode: 192.168.110.199:11000,192.168.110.199:12000

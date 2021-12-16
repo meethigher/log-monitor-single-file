@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="./js/log.css">
+</head>
+<body>
+    <div id="container" class="sl-log-container">
+        <div class="sl-log-wrapper">
+            <div class="sl-log-title">
+                <span class="sl-log-title-content">
+                    <img src="./img/title.png" alt="">
+                </span>
+                <div class="sl-select-wrapper">
+                    <div>
+                        <span class="sl-select-title">选择集群节点：</span>
+                        <select class="sl-node-select" @change="selectNode">
+                            <option v-if="nodeList.length>0" v-for="(item,i) of nodeList" :value="item" :key="i">{{ item }}</option>
+                            <option v-if="nodeList.length==0" value="">暂无数据</option>
+                        </select>
+                    </div>
+                    
+                </div>
+            </div>
+            <div class="sl-back-wrapper">
+                <div class="sl-back-content" v-show="selectDirectoryPath" @click="backToPreviousLevel">
+                    <img class="sl-backup" src="./img/backup.png" alt="">
+                    <span class="sl-back-title">返回</span>
+                </div>
+                <div></div>
+                <div class="sl-date-wrapper" id="test-range">
+                    <span>选择时间：</span>
+                    <input type="text" class="demo-input" placeholder="请选择时间" id="dateSelect">
+                </div>
+            </div>
+            <div class="sl-log-content">
+                <div class="sl-file-content">
+                    <div class="sl-file-wrapper" v-for="(item,index) of fileList" :key="index">
+                        <div class="sl-file-path" @click="selectDirectory(item)">
+                            <span v-show="item.isFile"><img src="./img/file.png" alt=""></span>
+                            <span v-show="!item.isFile"><img src="./img/folder.png" alt=""></span>
+                            <span class="sl-log-path">{{ item.logPath }}</span>
+                        </div>
+                        <div class="sl-operation">
+                            <!-- <div class="sl-file-update-time">{{ formatDate(item.updateTime) }}</div> -->
+                            <div class="sl-file-operation">
+                                <button @click="downFile(item)" v-show="item.isFile">下载</button>
+                                <span v-show="!item.isFile">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sl-socket-content">
+                    <div class="sl-socket-grid" id="socketContent">
+                        <div class="sl-wesocket-content" v-for="(item, i) in wsInfo" :key="i" :class="{'textRed':!item.connected}">
+                            {{ item.info }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="./js/axios.min.js"></script>
+    <script src="./js/vue-2.614.js"></script>
+    <script src="./js/laydate/laydate.js"></script>
+    <script>
+        var container = new Vue({
+            el:"#container",
+            data(){
+                return{
+                    //集群节点数据
+                    nodeList:[],
+                    //文件内容
+                    fileList:[],
+                    //当前集群节点
+                    currentNode:'',
+                    //点击选中文件夹路径
+                    selectDirectoryPath:'',
+                    //websocket对象
+                    ws:null,
+                    //websocket信息
+                    wsInfo:[],
+                    //请求路径
+                    reqeustUrl:'',
+                    //请求接口地址后缀
+                    sussfixArr:'',
+                    //开始时间
+                    startTime:'',
+                    //结束时间
+                    endTime:'',
+                    //当前路径
+                    curPath:'',
+                }
+            },
+            components:{
+                
+            },
+            methods:{
+                //获取集群节点数据
+                getNodeData(){
+                    axios({
+                        method:"get",
+                        // url:"http://192.168.110.199:10000/log/queryClusterNode",
+                        url:"http://" + this.reqeustUrl + "/log/queryClusterNode",
+                    }).then(res => {
+                        if (res.status === 200) {
+                            console.log(res);
+                            this.nodeList = res.data;
+                            this.currentNode = res.data[0];
+                            this.curPath = "";
+                            this.getDetailsOfCurDirectory();
+                            this.webSocketListen();
+                        }
+                    }).catch(error => {
+                        console.log(error);
+                    })
+                },
+                //查询当前目录下内容
+                getDetailsOfCurDirectory(){
+                    let params = {
+                        "endTime": this.endTime,
+                        "logPath": this.curPath,
+                        "startTime": this.startTime
+                    }
+                    this.fileList = [];
+                    axios({
+                        method:"post",
+                        // url:"http://" + this.currentNode + "/log/queryLog",
+                        url:"http://" + this.reqeustUrl + "/log/queryLog",
+                        data:params
+                    }).then(res => {
+                        if (res.status === 200) {
+                            if (res.data && res.data.code === 0) {
+                                console.log(res);
+                                this.fileList = res.data.data;
+                            }
+                        }
+                    }).catch(error => {
+                        console.log(error);
+                    })
+                },
+                //将时间戳转换为年月日时分秒
+                formatDate (value) {
+                    if (typeof (value) == 'undefined') {
+                        return ''
+                    } else {
+                        let date = new Date(parseInt(value))
+                        let y = date.getFullYear()
+                        let MM = date.getMonth() + 1
+                        MM = MM < 10 ? ('0' + MM) : MM
+                        let d = date.getDate()
+                        d = d < 10 ? ('0' + d) : d
+                        let h = date.getHours()
+                        h = h < 10 ? ('0' + h) : h
+                        let m = date.getMinutes()
+                        m = m < 10 ? ('0' + m) : m
+                        let s = date.getSeconds()
+                        s = s < 10 ? ('0' + s) : s
+                        return y + '-' + MM + '-' + d + ' ' + h + ':' + m + ':' + s
+                    }
+                },
+                //改变下拉框的值
+                selectNode(e){
+                    this.currentNode = e.target.value;
+                    this.reqeustUrl = this.currentNode + this.sussfixArr;
+                    console.log(this.reqeustUrl, "3222");
+                    this.getDetailsOfCurDirectory("");
+                    this.ws.close();
+                    this.webSocketListen();
+                },
+                //点击文件,是文件夹就查看其子目录
+                selectDirectory(item) {
+                    //当前路径是文件夹
+                    if (item.isFile === 0) {
+                        this.selectDirectoryPath = item.logPath;
+                        this.curPath = item.logPath;
+                        this.getDetailsOfCurDirectory();
+                    } else {
+                        return;
+                    }
+                },
+                //下载文件
+                downFile(item){
+                    if(!item.isFile) return false;
+                    let fileName = item.logPath.split(item.logPath.lastIndexOf("/")+1, item.logPath.length);
+                    let params = {
+                        "downloadName": fileName[0],
+                        "logPath": item.logPath
+                    }
+                    axios({
+                        method:"post",
+                        // url:"http://" + this.currentNode + "/log/downloadLog",
+                        url:"http://" + this.reqeustUrl + "/log/downloadLog",
+                        data:params
+                    }).then(res => {
+                        console.log(res, "223324");
+                        if (res.status === 200) {
+                            let data = res.data;
+                            let BLOB = new Blob([data]);
+                            let url = URL.createObjectURL(BLOB);
+                            let link = document.createElement('a');
+                            link.style.display = 'none';
+                            link.href = url;
+                            link.download = fileName[0];
+                            document.body.appendChild(link);
+                            link.click();
+                        }
+                    }).catch(error => {
+                        console.log(error);
+                    })
+                },
+                //返回上一级
+                backToPreviousLevel() {
+                    this.curPath = "";
+                    this.getDetailsOfCurDirectory();
+                    this.selectDirectoryPath = '';
+                },
+                //websocket
+                webSocketListen() {
+                    this.openWebSocket();
+                    // var t1 = window.setInterval(this.checkWebSocket, 5000);    // 轮询监测连接中断重启
+                },
+                openWebSocket() {
+                    let that = this;
+                    //判断是否支持WebSocket
+                    if ('WebSocket' in window) {
+                        this.ws = new WebSocket("ws://" + this.reqeustUrl + "/monitor");
+                    }else {
+                        alert('当前浏览器不支持WebSocket')
+                    }
+                    this.ws.onopen = function (evt) {        //  打开连接
+                        console.log("Connection open ...");
+                    };
+                    this.ws.onmessage = function (evt) {
+                        // console.log(evt.data,"3432432evt");
+                        that.wsInfo.push({
+                            info:evt.data,
+                            connected:true
+                        });
+                    };
+                    // 监听连接中断关闭，提示用户
+                    this.ws.onclose = function (evt) {
+                        console.log("Connection closed.");
+                    };
+                    this.ws.onerror = function(evt) {
+                        console.log(evt, "error");
+                        that.wsInfo = [];
+                        that.wsInfo.push({
+                            info:"连接 ws://" + that.reqeustUrl + "/monitor 失败!",
+                            connected:false
+                        });
+                    }
+                },
+                //连接中断后试图重启连接
+                checkWebSocket() {
+                    try {
+                        this.ws.send(""); //心跳
+                    } catch (e) {         
+                        openWebSocket(); //出现异常重新打开WebSocket
+                    }
+                },
+                getHrefParmas(){
+                    let str = location.href.split("?")[1] || "";
+                    let arr =str.split("&");
+                    let obj={};
+                    for(let item of arr){
+                        let list = item.split("=");
+                        obj[list[0]]=list[1]
+                    }
+                    return obj
+                },
+            },
+            created() {
+                //日期切换的回调
+                let that = this;
+                laydate.render({
+                    elem: '#dateSelect'
+                    // ,showBottom: false
+                    ,type: 'datetime'
+                    ,range: '~'
+                    ,format:'yyyy-MM-dd HH:mm:ss'
+                    ,done: function(value){
+                        let dateArr = value.split('~');
+                        that.startTime = new Date(dateArr[0].trim()).getTime();
+                        that.endTime = new Date(dateArr[1]).getTime();
+                        that.getDetailsOfCurDirectory();
+                    }
+                });
+            },
+            mounted(){
+                let str = this.getHrefParmas()["interface"] || "";
+                this.reqeustUrl = str.substring(str.indexOf("//")+2);
+                this.sussfixArr = this.reqeustUrl.substring(this.reqeustUrl.indexOf("/"));
+                this.getNodeData();
+            },
+            //每次页面渲染完之后滚动条在最底部
+            updated() {
+                this.$nextTick(() => {
+                    var div = document.getElementById('socketContent');
+                    div.scrollTop = div.scrollHeight;
+                })
+            }
+        })
+
+        
+    </script>
+</body>
+</html>
